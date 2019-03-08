@@ -135,7 +135,6 @@ include_directories(
   ${EIGEN3_INCLUDE_DIRS}
   ${Boost_INCLUDE_DIRS}
   ../tiguan_movebase/include
-  /include
 )
 
 ## Declare a C++ library

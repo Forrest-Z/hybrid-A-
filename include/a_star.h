@@ -11,6 +11,7 @@
 #include <cmath>
 #include <chrono>
 #include <random>
+#include <map>
 
 #include <opencv2/core.hpp>
 #include <opencv2/imgcodecs.hpp>
@@ -34,6 +35,7 @@ struct VehiclePose {
   int y_index;
   double cost_g;
   double total_cost;
+  int node_flag;
   VehiclePose* parent;
   bool operator < (const VehiclePose& temp_node) const;
   bool operator > (const VehiclePose& temp_node) const;
@@ -61,10 +63,13 @@ class OpenList {
   void pop();
   void insert(VehiclePose insert_pose);
   bool check_nearer(int index, VehiclePose check_pose);
-  void change(int index, VehiclePose change_pose);
-  VehiclePose top();
+  void decrease(int index, VehiclePose change_pose);
   bool empty();
+  VehiclePose top();
  private:
+  int heap_size_;
+  const double cost_infinity_;
+  void min_heapify(int index);
   static bool sort_cmp(VehiclePose pose1, VehiclePose pose2);
   std::vector<VehiclePose> openlist_data_;
 };
@@ -92,7 +97,7 @@ class AStar {
   std::vector<double> car_parameters_;
   tiguan_movebase::VehicleMoveBase tiguan_model_;
   OpenList open_list_;
-  std::vector<std::vector<VehiclePose>> closed_list_;
+  std::map<std::vector<int>, VehiclePose> closed_list_;
   VehiclePose destination_;
   VehiclePose initial_;
   ROSMapData map_data_;

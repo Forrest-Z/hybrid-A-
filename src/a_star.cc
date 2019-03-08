@@ -69,7 +69,27 @@ lmk_astar::ROSMapData::ROSMapData():metadata_flag(false),mapdata_flag(false) {
   map_height = map_length = -1;
 }
 // functions in class OpenList
-lmk_astar::OpenList::OpenList() {}
+// binary heap
+lmk_astar::OpenList::OpenList():heap_size_(0), cost_infinity_(5000.0) {};
+void lmk_astar::OpenList::min_heapify(int index) {
+  int left((index+1)*2),right((index+1)*2+1), smallest(index+1);
+  VehiclePose swap_temp;
+  while (index < heap_size_) {
+    left = (index+1)*2;
+    right = (index+1)*2+1;
+    if (left <= heap_size_ && openlist_data_[left-1] < openlist_data_[index]) {
+      smallest = left;
+    } else if (right <= heap_size_ && openlist_data_[right-1] < openlist_data_[smallest-1]) {
+      smallest = right;
+    } else {}
+    if ((index+1) != smallest) {
+      swap_temp = openlist_data_[index];
+      openlist_data_[index] = openlist_data_[smallest-1];
+      openlist_data_[smallest-1] = swap_temp;
+      index = smallest-1;
+    } else {break;}
+  }
+};
 // if -1 returned, target pose is not found
 inline int lmk_astar::OpenList::find(VehiclePose search_pose) const {
   int size = openlist_data_.size();
@@ -81,26 +101,18 @@ inline int lmk_astar::OpenList::find(VehiclePose search_pose) const {
   return -1;
 }
 void lmk_astar::OpenList::insert(VehiclePose insert_pose) {
-  int size = openlist_data_.size();
-  int top(0), bottom(size-1), index(0);
-  if (size == 0 || insert_pose < openlist_data_[size - 1] || (size == 1 && insert_pose < openlist_data_[0])) {
-    openlist_data_.push_back(insert_pose);
-    return;
-  } else if (insert_pose > openlist_data_[0] || (size == 1 && openlist_data_[0] < insert_pose)) {
-    openlist_data_.insert(openlist_data_.begin(), insert_pose);
-    return;
-  } else {}
-  while ((bottom - top) > 1) {
-    index = (top+bottom)/2;
-    if (insert_pose < openlist_data_[index]) {
-      top = index + 1;
-    } else {bottom = index;}
+  heap_size_ = heap_size_ + 1;
+  VehiclePose temp_pose(-1.0, -1.0, -1.0, cost_infinity_, cost_infinity_);
+  if (heap_size_ > openlist_data_.size()) {
+    openlist_data_.push_back(temp_pose);
+  } else {
+    openlist_data_[heap_size_-1] = temp_pose;
   }
-  openlist_data_.insert(openlist_data_.begin()+bottom, insert_pose);
+  decrease(heap_size_-1, insert_pose);
 }
 // keywords "inline" should be put here, it will not work if placed in the .h file, function statement
 inline bool lmk_astar::OpenList::check_nearer(int index, VehiclePose check_pose) {
-  if (index < 0 || index > (openlist_data_.size()-1)) {
+  if (index < 0 || index > (heap_size_-1)) {
     ROS_ERROR("error: invalid index, could not compare");
     return false;
   }
@@ -109,61 +121,27 @@ inline bool lmk_astar::OpenList::check_nearer(int index, VehiclePose check_pose)
   } else {return false;}
 }
 inline void lmk_astar::OpenList::pop() {
-  if (openlist_data_.empty()) {
+  if (heap_size_ < 1) {
     ROS_ERROR("error: empty openlist, could not pop");
     return;
   }
-  openlist_data_.pop_back();
+  openlist_data_[0] = openlist_data_[heap_size_-1];
+  //openlist_data_.pop_back();
+  heap_size_ = heap_size_ - 1;
+  min_heapify(0);
 }
-void lmk_astar::OpenList::change(int index, VehiclePose change_pose) {
-  int size = openlist_data_.size();
-  int top,bottom;
-  if (change_pose.total_cost <0) {
-    ROS_ERROR("error: wrong change pose, invalid total cost");
-    return;
-  } else if (index > (size-1)) {
-    ROS_ERROR("error: invalid index, could not change");
-    return;
-  } else if (size == 0) {
-    ROS_ERROR("error: empty open list, could not change");
-    return;
-  } else if (size == 1) {
-    openlist_data_[0] = change_pose;
-  } else {}
-  // size >= 2, then
-  //openlist_data_[index] = change_pose;
-  //std::sort (openlist_data_.begin(), openlist_data_.end(), sort_cmp);
-  if (change_pose < openlist_data_[index]) {
-    if (index == (size-1) || change_pose < openlist_data_[size-1]) {
-      openlist_data_.erase(openlist_data_.begin()+index);
-      openlist_data_.insert(openlist_data_.end(), change_pose);
-      return;
-    } else if (change_pose > openlist_data_[index + 1]) {
-      openlist_data_[index] = change_pose;
-      return;
-    }
-    top = index;
-    bottom = size-2;
-  } else {
-    if (index == 0 || change_pose > openlist_data_[0]) {
-      openlist_data_.erase(openlist_data_.begin()+index);
-      openlist_data_.insert(openlist_data_.begin(), change_pose);
-      return;
-    } else if (change_pose < openlist_data_[index-1]) {
-      openlist_data_[index] = change_pose;
-      return;
-    }
-    top = 0;
-    bottom = index-1;
+void lmk_astar::OpenList::decrease(int index, VehiclePose change_pose) {
+  openlist_data_[index] = change_pose;
+  VehiclePose temp_pose;
+  while (index > 0 && openlist_data_[(index+1)/2-1] > openlist_data_[index]) {
+    temp_pose = openlist_data_[index];
+    openlist_data_[index] = openlist_data_[(index+1)/2-1];
+    openlist_data_[(index+1)/2-1] = temp_pose;
+    index = (index+1)/2-1;
   }
-  openlist_data_.erase(openlist_data_.begin()+index);
-  while ((bottom-top)>1) {
-    index = (top+bottom)/2;
-    if (change_pose < openlist_data_[index]) {
-      top = index + 1;
-    } else {bottom = index;}
-  }
-  openlist_data_.insert(openlist_data_.begin()+bottom, change_pose);
+}
+bool lmk_astar::OpenList::empty() {
+  return ((heap_size_ > 0) ? false:true);
 }
 inline lmk_astar::VehiclePose lmk_astar::OpenList::top() {
   if (openlist_data_.empty()) {
@@ -171,10 +149,7 @@ inline lmk_astar::VehiclePose lmk_astar::OpenList::top() {
     VehiclePose temp;
     return temp;
   }
-  return openlist_data_.back();
-}
-inline bool lmk_astar::OpenList::empty() {
-  return openlist_data_.empty();
+  return openlist_data_[0];
 }
 // static function, in case std::sort() will be used
 bool lmk_astar::OpenList::sort_cmp(VehiclePose pose1, VehiclePose pose2) {
@@ -191,14 +166,12 @@ lmk_astar::AStar::AStar():astar_nh_("astar_planner"),pi_(3.14159) {
   get_initial();
   //draw_baseimg();
   astar_search();
-  std::cout << std::sin(pi_) << std::endl;
   //LOG(INFO) << "glog set successfully" << std::endl;
 }
 lmk_astar::AStar::~AStar() {}
 // public member function
 // main logic
 void lmk_astar::AStar::astar_search() {
-  // note: there is a implicit type conversion here
   VehiclePose temp_pose(initial_.x_pose, initial_.y_pose, initial_.heading_angle, 0);
   temp_pose.total_cost = temp_pose.cost_g + heuristic_func(temp_pose);
   open_list_.insert(temp_pose);
@@ -207,9 +180,10 @@ void lmk_astar::AStar::astar_search() {
     open_list_.pop();
     // insert into closed list
     map_data_.map_occupancy[temp_pose.y_index][temp_pose.x_index] = 2;
-    closed_list_[temp_pose.y_index][temp_pose.x_index] = temp_pose;
-    if (reach_destination(temp_pose)) {
-      closed_list_[destination_.y_index][destination_.x_index].parent = &(closed_list_[temp_pose.y_index][temp_pose.x_index]);
+    closed_list_.insert(std::pair<std::vector<int>, VehiclePose>({temp_pose.x_index, temp_pose.y_index}, temp_pose));
+    if (reach_destination(temp_pose)) {     
+      destination_.parent = &(closed_list_.find({temp_pose.x_index, temp_pose.y_index})->second);
+      closed_list_.insert(std::pair<std::vector<int>, VehiclePose>({destination_.x_index, destination_.y_index}, destination_));
       path_generator();
       draw_demo();
       return;
@@ -232,7 +206,7 @@ std::vector<std::vector<double>> lmk_astar::AStar::motion_primitive(VehiclePose 
   double temp_angle(0.0);
   for (int i = 0; i < 5; ++i) {
     temp_angle = -total_angle + (total_angle/2.0)*i;
-    temp_storage = tiguan_model_.tiguan_bicycle_module(5.0, temp_angle, 0.08, root_pose_vector);
+    temp_storage = tiguan_model_.tiguan_bicycle_module(8.0, temp_angle, 0.08, root_pose_vector);
     temp_storage[0] = temp_storage[0]/resolution;
     temp_storage[1] = temp_storage[1]/resolution;
     temp_storage[3] = temp_storage[3]/resolution;
@@ -248,7 +222,7 @@ std::vector<std::vector<double>> lmk_astar::AStar::motion_primitive(VehiclePose 
   return neighbour_nodes;
 }
 void lmk_astar::AStar::path_generator() {
-  VehiclePose* route_pointer(&closed_list_[destination_.y_index][destination_.x_index]);
+  VehiclePose* route_pointer(&closed_list_.find({destination_.x_index, destination_.y_index})->second);
   while (route_pointer->parent != nullptr) {
     path_found_.push_back(*route_pointer);
     route_pointer = route_pointer->parent;
@@ -264,7 +238,6 @@ double lmk_astar::AStar::heuristic_func(VehiclePose cal_pose) {
 void lmk_astar::AStar::update_neighbour(VehiclePose& cur_pose) {
   std::vector<std::vector<double>> neighbour_nodes = motion_primitive(cur_pose);
   VehiclePose temp_pose;
-  double cb_cost_g(cur_pose.cost_g);
   int open_index(0);
   for (auto i : neighbour_nodes) {
     temp_pose = {i[1], i[0], i[2]};
@@ -276,18 +249,14 @@ void lmk_astar::AStar::update_neighbour(VehiclePose& cur_pose) {
       temp_pose.cost_g = cur_pose.cost_g + i[3];
       // calculate the heuristic distance and update the current total_cost
       temp_pose.total_cost = heuristic_func(temp_pose) + temp_pose.cost_g;
+      temp_pose.parent = &(closed_list_.find({cur_pose.x_index, cur_pose.y_index})->second);
       // if in openlist: check if its cost_g nearer
       if (map_data_.map_occupancy[temp_pose.y_index][temp_pose.x_index] == 3) {
         open_index = open_list_.find(temp_pose);
         if (open_list_.check_nearer(open_index, temp_pose)) {
-          temp_pose.parent = &(closed_list_[cur_pose.y_index][cur_pose.x_index]);
-          closed_list_[temp_pose.y_index][temp_pose.x_index].parent = temp_pose.parent;
-          open_list_.change(open_index, temp_pose);
+          open_list_.decrease(open_index, temp_pose);
         } else {}
       } else {
-        temp_pose.parent = &(closed_list_[cur_pose.y_index][cur_pose.x_index]);
-        closed_list_[temp_pose.y_index][temp_pose.x_index].parent = temp_pose.parent;
-        map_data_.map_occupancy[temp_pose.y_index][temp_pose.x_index] = 3;
         open_list_.insert(temp_pose);
       }
     }
@@ -329,9 +298,6 @@ void lmk_astar::AStar::acquire_mapdata() {
     } else {ROS_ERROR("error: falided to receive map data");}
     map_data_.map_occupancy = map_copy;
   }
-  VehiclePose temp_pose(-1, -1, -1);
-  std::vector<std::vector<VehiclePose>> temp_closed_list(map_data_.map_height, std::vector<VehiclePose>(map_data_.map_length, temp_pose));
-  closed_list_ = temp_closed_list;
   car_parameters_ = tiguan_model_.get_parameter();
 }
 bool lmk_astar::AStar::reach_destination(VehiclePose temp_pose) {
@@ -386,16 +352,8 @@ void lmk_astar::AStar::draw_demo() {
   ROS_INFO("start drawing pic");
   cv::Mat show_img = cv::imread("/home/mingkun/lmk_ws/src/a_star/assets/map_base_img.jpg");
   cv::Point temp_point, end_point;
-  VehiclePose* route_pointer(&closed_list_[destination_.y_index][destination_.x_index]);
-  for (int i = 0; i < map_data_.map_height; ++i) {
-    for (int j = 0; j < map_data_.map_length; ++j) {
-      if (map_data_.map_occupancy[i][j] == 2) {
-        show_img.at<cv::Vec3b>(i,j)[0] = 0;
-        show_img.at<cv::Vec3b>(i,j)[1] = 255;
-        show_img.at<cv::Vec3b>(i,j)[2] = 0;
-      }
-    }
-  }
+  VehiclePose* route_pointer(&(closed_list_.find({destination_.x_index, destination_.y_index})->second));
+  // draw destination point and initial point
   temp_point.x = destination_.x_index;
   temp_point.y = destination_.y_index;
   end_point.x = temp_point.x + 20*std::cos(destination_.heading_angle);
@@ -408,6 +366,15 @@ void lmk_astar::AStar::draw_demo() {
   end_point.y = temp_point.y + 20*std::sin(initial_.heading_angle);
   cv::circle(show_img, temp_point, 8, cv::Scalar(255, 0, 0), 2);
   cv::line(show_img, temp_point, end_point, cv::Scalar(255, 0, 0), 2);
+  for (int i = 0; i < map_data_.map_height; ++i) {
+    for (int j = 0; j < map_data_.map_length; ++j) {
+      if (map_data_.map_occupancy[i][j] == 2) {
+        show_img.at<cv::Vec3b>(i,j)[0] = 0;
+        show_img.at<cv::Vec3b>(i,j)[1] = 255;
+        show_img.at<cv::Vec3b>(i,j)[2] = 0;
+      }
+    }
+  }
   while (route_pointer->parent != nullptr) {
     show_img.at<cv::Vec3b>(route_pointer->y_index, route_pointer->x_index)[0] = 0;
     show_img.at<cv::Vec3b>(route_pointer->y_index, route_pointer->x_index)[1] = 0;
