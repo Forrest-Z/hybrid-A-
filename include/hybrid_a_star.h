@@ -77,7 +77,8 @@ class AStar {
  public:
   AStar();
   ~AStar();
-  void astar_search();
+  void hybrid_astar_search();
+  void normal_astar_search(std::vector<int> destination_grid, std::vector<int> initial_grid);
  private:
   const double pi_;
   std::vector<std::vector<double>> motion_primitive(VehiclePose root_pose);
@@ -105,6 +106,7 @@ class AStar {
   VehiclePose destination_;
   VehiclePose initial_;
   ROSMapData map_data_;
+  std::vector<std::vector<double>> heuristic_lookup_talbe_;
 };
 }
 // if X has already been defined, goto #else directly

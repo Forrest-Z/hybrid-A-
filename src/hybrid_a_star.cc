@@ -166,13 +166,13 @@ lmk_astar::AStar::AStar():astar_nh_("astar_planner"),pi_(3.14159) {
   set_destination();
   get_initial();
   //draw_baseimg();
-  astar_search();
+  hybrid_astar_search();
   //LOG(INFO) << "glog set successfully" << std::endl;
 }
 lmk_astar::AStar::~AStar() {}
 // public member function
 // main logic
-void lmk_astar::AStar::astar_search() {
+void lmk_astar::AStar::hybrid_astar_search() {
   VehiclePose temp_pose(initial_.x_pose, initial_.y_pose, initial_.heading_angle, 0);
   temp_pose.total_cost = temp_pose.cost_g + heuristic_func(temp_pose);
   open_list_.insert(temp_pose);
@@ -191,6 +191,8 @@ void lmk_astar::AStar::astar_search() {
     } else {update_neighbour(temp_pose);}
   }
   ROS_INFO("no path found");
+}
+void lmk_astar::AStar::normal_astar_search(std::vector<int> destination_grid, std::vector<int> initial_gird) {
 }
 // private member function
 std::vector<std::vector<double>> lmk_astar::AStar::motion_primitive(VehiclePose root_pose) {
@@ -350,7 +352,8 @@ void lmk_astar::AStar::acquire_mapdata() {
   car_parameters_ = tiguan_model_.get_parameter();
 }
 void lmk_astar::AStar::pre_compute_heuristic_cost() {
-  int k;
+  std::vector<std::vector<double>> temp_lookup_table(map_data_.map_height, std::vector<double>(map_data_.map_length, -1.0));
+  heuristic_lookup_talbe_ = temp_lookup_table;
 }
 void lmk_astar::AStar::draw_demo() {
   ROS_INFO("start drawing pic");
