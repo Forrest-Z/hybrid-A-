@@ -1,4 +1,4 @@
-#include "a_star.h"
+#include "hybrid_a_star.h"
 #include "nh_curve.h"
 
 int main(int argc, char** argv) {

@@ -139,7 +139,7 @@ include_directories(
 
 ## Declare a C++ library
 add_library(${PROJECT_NAME}
-  src/a_star.cc
+  src/hybrid_a_star.cc
   src/nh_curve.cc
 )
 
@@ -153,7 +153,7 @@ add_dependencies(${PROJECT_NAME} ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EX
 ## Declare a C++ executable
 ## With catkin_make all packages are built within a single CMake context
 ## The recommended prefix ensures that target names across packages don't collide
-add_executable(${PROJECT_NAME}_node src/a_star_node.cc)
+add_executable(${PROJECT_NAME}_node src/hybrid_a_star_node.cc)
 
 ## Rename C++ executable without prefix
 ## The above recommended prefix causes long target names, the following renames the

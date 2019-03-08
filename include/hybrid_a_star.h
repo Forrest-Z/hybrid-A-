@@ -84,14 +84,18 @@ class AStar {
   void path_generator();
   double heuristic_func(VehiclePose cal_pose);
   void update_neighbour(VehiclePose& cur_pose);
-  void acquire_mapdata();
   bool reach_destination(VehiclePose temp_pose);
   bool collision_detection(VehiclePose check_pose);
   void set_destination();
   void get_initial();
   std::vector<double> random_point(int pic_height, int pic_lenght);
+  // funcitons that need to be precomputed, before the start of the on time planner
+  void acquire_mapdata();
+  void pre_compute_heuristic_cost();
+  // functions that are used to draw demos
   void draw_demo();
   void draw_baseimg();
+  // member parameters
   ros::NodeHandle astar_nh_;
   std::vector<VehiclePose> path_found_;
   std::vector<double> car_parameters_;

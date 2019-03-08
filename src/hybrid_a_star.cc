@@ -1,4 +1,4 @@
-#include "a_star.h"
+#include "hybrid_a_star.h"
 
 // construction/deconstruction function of struct VehiclePose
 lmk_astar::VehiclePose::VehiclePose() {
@@ -162,6 +162,7 @@ lmk_astar::AStar::AStar():astar_nh_("astar_planner"),pi_(3.14159) {
   std::cout << "Debug mode" << std::endl;
 #endif
   acquire_mapdata();
+  pre_compute_heuristic_cost();
   set_destination();
   get_initial();
   //draw_baseimg();
@@ -204,7 +205,7 @@ std::vector<std::vector<double>> lmk_astar::AStar::motion_primitive(VehiclePose 
   std::vector<double> temp_storage;
   double total_angle = car_parameters_[2];
   double temp_angle(0.0);
-  for (int i = 0; i < 5; ++i) {
+  for (int i = 0; i < 3; ++i) {
     temp_angle = -total_angle + (total_angle/2.0)*i;
     temp_storage = tiguan_model_.tiguan_bicycle_module(8.0, temp_angle, 0.08, root_pose_vector);
     temp_storage[0] = temp_storage[0]/resolution;
@@ -262,6 +263,54 @@ void lmk_astar::AStar::update_neighbour(VehiclePose& cur_pose) {
     }
   }
 }
+bool lmk_astar::AStar::reach_destination(VehiclePose temp_pose) {
+  if (destination_.x_index == -1 || destination_.y_index == -1) {
+    ROS_ERROR("error: no destination set");
+    return false;
+  } else if (5 >= std::sqrt(std::pow((temp_pose.y_pose - destination_.y_pose), 2) + std::pow((temp_pose.x_pose - destination_.x_pose), 2))) {
+    return true;
+  } else {return false;}
+}
+bool lmk_astar::AStar::collision_detection(VehiclePose check_pose) {
+  if (map_data_.map_occupancy[check_pose.y_index][check_pose.x_index] == 0) {
+    return true;
+  }
+  return false;
+}
+void lmk_astar:: AStar::set_destination() {
+  std::vector<double> temp_config(3, 0.0);
+  VehiclePose temp_pose;
+  temp_config = random_point(map_data_.map_height, map_data_.map_length);
+  temp_pose = {temp_config[1], temp_config[0], temp_config[2]};
+  while(!collision_detection(temp_pose)){
+    temp_config = random_point(map_data_.map_height, map_data_.map_length);
+    temp_pose = {temp_config[1], temp_config[0], temp_config[2]};
+  }
+  destination_ = temp_pose;
+}
+void lmk_astar::AStar::get_initial() {
+  std::vector<double> temp_config(3, 0.0);
+  VehiclePose temp_pose;
+  temp_config = random_point(map_data_.map_height, map_data_.map_length);
+  temp_pose = {temp_config[1], temp_config[0], temp_config[2], 0};
+  while (!collision_detection(temp_pose)) {
+    temp_config = random_point(map_data_.map_height, map_data_.map_length);
+    temp_pose = {temp_config[1], temp_config[0], temp_config[2], 0};
+  }
+  initial_ = temp_pose;
+}
+std::vector<double> lmk_astar::AStar::random_point(int pic_height, int pic_length) {
+  std::vector<double> random_config(3, 0.0);
+  unsigned seed = std::chrono::system_clock::now().time_since_epoch().count();
+  std::default_random_engine generator(seed);
+  std::uniform_real_distribution<double> distribution_x_axis(0, pic_length);
+  std::uniform_real_distribution<double> distribution_y_axis(0, pic_height);
+  std::uniform_real_distribution<double> distribution_angle(-pi_, pi_);
+  random_config[0] = distribution_y_axis(generator);
+  random_config[1] = distribution_x_axis(generator);
+  random_config[2] = distribution_angle(generator);
+  return random_config;
+}
 void lmk_astar::AStar::acquire_mapdata() {
   int size(0);
   while(!map_data_.metadata_flag) {
@@ -300,53 +349,8 @@ void lmk_astar::AStar::acquire_mapdata() {
   }
   car_parameters_ = tiguan_model_.get_parameter();
 }
-bool lmk_astar::AStar::reach_destination(VehiclePose temp_pose) {
-  if (destination_.x_index == -1 || destination_.y_index == -1) {
-    ROS_ERROR("error: no destination set");
-    return false;
-  } else if (5 >= std::sqrt(std::pow((temp_pose.y_pose - destination_.y_pose), 2) + std::pow((temp_pose.x_pose - destination_.x_pose), 2))) {
-    return true;
-  } else {return false;}
-}
-bool lmk_astar::AStar::collision_detection(VehiclePose check_pose) {
-  if (map_data_.map_occupancy[check_pose.y_index][check_pose.x_index] == 1) {
-    return false;
-  }
-  return true;
-}
-void lmk_astar:: AStar::set_destination() {
-  std::vector<double> temp_config(3, 0.0);
-  VehiclePose temp_pose;
-  temp_config = random_point(map_data_.map_height, map_data_.map_length);
-  temp_pose = {temp_config[1], temp_config[0], temp_config[2]};
-  while(!collision_detection(temp_pose)){
-    temp_config = random_point(map_data_.map_height, map_data_.map_length);
-    temp_pose = {temp_config[1], temp_config[0], temp_config[2]};
-  }
-  destination_ = temp_pose;
-}
-void lmk_astar::AStar::get_initial() {
-  std::vector<double> temp_config(3, 0.0);
-  VehiclePose temp_pose;
-  temp_config = random_point(map_data_.map_height, map_data_.map_length);
-  temp_pose = {temp_config[1], temp_config[0], temp_config[2], 0};
-  while (!collision_detection(temp_pose)) {
-    temp_config = random_point(map_data_.map_height, map_data_.map_length);
-    temp_pose = {temp_config[1], temp_config[0], temp_config[2], 0};
-  }
-  initial_ = temp_pose;
-}
-std::vector<double> lmk_astar::AStar::random_point(int pic_height, int pic_length) {
-  std::vector<double> random_config(3, 0.0);
-  unsigned seed = std::chrono::system_clock::now().time_since_epoch().count();
-  std::default_random_engine generator(seed);
-  std::uniform_real_distribution<double> distribution_x_axis(0, pic_length);
-  std::uniform_real_distribution<double> distribution_y_axis(0, pic_height);
-  std::uniform_real_distribution<double> distribution_angle(-pi_, pi_);
-  random_config[0] = distribution_y_axis(generator);
-  random_config[1] = distribution_x_axis(generator);
-  random_config[2] = distribution_angle(generator);
-  return random_config;
+void lmk_astar::AStar::pre_compute_heuristic_cost() {
+  int k;
 }
 void lmk_astar::AStar::draw_demo() {
   ROS_INFO("start drawing pic");
