@@ -156,7 +156,7 @@ bool lmk_astar::OpenList::sort_cmp(VehiclePose pose1, VehiclePose pose2) {
   return (pose1.total_cost > pose2.total_cost);
 }
 // construction/deconstruction function of class AStar
-lmk_astar::AStar::AStar():astar_nh_("astar_planner"),pi_(3.14159) {
+lmk_astar::HybridAStar::HybridAStar():astar_nh_("astar_planner"),pi_(3.14159) {
   //google::InitGoogleLogging("astar_planning");
 #ifdef _DEBUG__
   std::cout << "Debug mode" << std::endl;
@@ -169,10 +169,10 @@ lmk_astar::AStar::AStar():astar_nh_("astar_planner"),pi_(3.14159) {
   hybrid_astar_search();
   //LOG(INFO) << "glog set successfully" << std::endl;
 }
-lmk_astar::AStar::~AStar() {}
+lmk_astar::HybridAStar::~HybridAStar() {}
 // public member function
 // main logic
-void lmk_astar::AStar::hybrid_astar_search() {
+void lmk_astar::HybridAStar::hybrid_astar_search() {
   VehiclePose temp_pose(initial_.x_pose, initial_.y_pose, initial_.heading_angle, 0);
   temp_pose.total_cost = temp_pose.cost_g + heuristic_func(temp_pose);
   open_list_.insert(temp_pose);
@@ -192,10 +192,8 @@ void lmk_astar::AStar::hybrid_astar_search() {
   }
   ROS_INFO("no path found");
 }
-void lmk_astar::AStar::normal_astar_search(std::vector<int> destination_grid, std::vector<int> initial_gird) {
-}
 // private member function
-std::vector<std::vector<double>> lmk_astar::AStar::motion_primitive(VehiclePose root_pose) {
+std::vector<std::vector<double>> lmk_astar::HybridAStar::motion_primitive(VehiclePose root_pose) {
   std::vector<std::vector<double>> neighbour_nodes;
   /*neighbour_nodes = {{root_pose.y_pose-1, root_pose.x_pose, root_pose.heading_angle, 1}, {root_pose.y_pose+1, root_pose.x_pose, root_pose.heading_angle, 1},
   {root_pose.y_pose, root_pose.x_pose-1, root_pose.heading_angle, 1}, {root_pose.y_pose, root_pose.x_pose+1, root_pose.heading_angle, 1},
@@ -224,21 +222,21 @@ std::vector<std::vector<double>> lmk_astar::AStar::motion_primitive(VehiclePose 
 #endif
   return neighbour_nodes;
 }
-void lmk_astar::AStar::path_generator() {
+void lmk_astar::HybridAStar::path_generator() {
   VehiclePose* route_pointer(&closed_list_.find({destination_.x_index, destination_.y_index})->second);
   while (route_pointer->parent != nullptr) {
     path_found_.push_back(*route_pointer);
     route_pointer = route_pointer->parent;
   }
 }
-double lmk_astar::AStar::heuristic_func(VehiclePose cal_pose) {
+double lmk_astar::HybridAStar::heuristic_func(VehiclePose cal_pose) {
   if (destination_.y_pose == -1 || destination_.x_pose == -1) {
     ROS_ERROR("error: no destination set, could not calculate heuristic");
     return 0;
   } else {return std::sqrt(std::pow((cal_pose.x_pose - destination_.x_pose), 2)+std::pow((cal_pose.y_pose - destination_.y_pose), 2));}
 }
 // got able to run, but result not shown yet
-void lmk_astar::AStar::update_neighbour(VehiclePose& cur_pose) {
+void lmk_astar::HybridAStar::update_neighbour(VehiclePose& cur_pose) {
   std::vector<std::vector<double>> neighbour_nodes = motion_primitive(cur_pose);
   VehiclePose temp_pose;
   int open_index(0);
@@ -265,7 +263,7 @@ void lmk_astar::AStar::update_neighbour(VehiclePose& cur_pose) {
     }
   }
 }
-bool lmk_astar::AStar::reach_destination(VehiclePose temp_pose) {
+bool lmk_astar::HybridAStar::reach_destination(VehiclePose temp_pose) {
   if (destination_.x_index == -1 || destination_.y_index == -1) {
     ROS_ERROR("error: no destination set");
     return false;
@@ -273,13 +271,13 @@ bool lmk_astar::AStar::reach_destination(VehiclePose temp_pose) {
     return true;
   } else {return false;}
 }
-bool lmk_astar::AStar::collision_detection(VehiclePose check_pose) {
+bool lmk_astar::HybridAStar::collision_detection(VehiclePose check_pose) {
   if (map_data_.map_occupancy[check_pose.y_index][check_pose.x_index] == 0) {
     return true;
   }
   return false;
 }
-void lmk_astar:: AStar::set_destination() {
+void lmk_astar:: HybridAStar::set_destination() {
   std::vector<double> temp_config(3, 0.0);
   VehiclePose temp_pose;
   temp_config = random_point(map_data_.map_height, map_data_.map_length);
@@ -290,7 +288,7 @@ void lmk_astar:: AStar::set_destination() {
   }
   destination_ = temp_pose;
 }
-void lmk_astar::AStar::get_initial() {
+void lmk_astar::HybridAStar::get_initial() {
   std::vector<double> temp_config(3, 0.0);
   VehiclePose temp_pose;
   temp_config = random_point(map_data_.map_height, map_data_.map_length);
@@ -301,7 +299,7 @@ void lmk_astar::AStar::get_initial() {
   }
   initial_ = temp_pose;
 }
-std::vector<double> lmk_astar::AStar::random_point(int pic_height, int pic_length) {
+std::vector<double> lmk_astar::HybridAStar::random_point(int pic_height, int pic_length) {
   std::vector<double> random_config(3, 0.0);
   unsigned seed = std::chrono::system_clock::now().time_since_epoch().count();
   std::default_random_engine generator(seed);
@@ -313,7 +311,7 @@ std::vector<double> lmk_astar::AStar::random_point(int pic_height, int pic_lengt
   random_config[2] = distribution_angle(generator);
   return random_config;
 }
-void lmk_astar::AStar::acquire_mapdata() {
+void lmk_astar::HybridAStar::acquire_mapdata() {
   int size(0);
   while(!map_data_.metadata_flag) {
     ros::ServiceClient map_meta_client = astar_nh_.serviceClient<map_proc::MapMetaP>("/map_metadata_planner");
@@ -351,11 +349,11 @@ void lmk_astar::AStar::acquire_mapdata() {
   }
   car_parameters_ = tiguan_model_.get_parameter();
 }
-void lmk_astar::AStar::pre_compute_heuristic_cost() {
+void lmk_astar::HybridAStar::pre_compute_heuristic_cost() {
   std::vector<std::vector<double>> temp_lookup_table(map_data_.map_height, std::vector<double>(map_data_.map_length, -1.0));
   heuristic_lookup_talbe_ = temp_lookup_table;
 }
-void lmk_astar::AStar::draw_demo() {
+void lmk_astar::HybridAStar::draw_demo() {
   ROS_INFO("start drawing pic");
   cv::Mat show_img = cv::imread("/home/mingkun/lmk_ws/src/a_star/assets/map_base_img.jpg");
   cv::Point temp_point, end_point;
@@ -390,7 +388,7 @@ void lmk_astar::AStar::draw_demo() {
   }
   cv::imwrite("/home/mingkun/lmk_ws/src/a_star/assets/test1.jpg", show_img);
 }
-void lmk_astar::AStar::draw_baseimg() {
+void lmk_astar::HybridAStar::draw_baseimg() {
   cv::Mat img_yutian = cv::Mat::zeros(map_data_.map_height, map_data_.map_length, CV_8UC3);
   for (int i = 0; i < map_data_.map_height; ++i) {
    uchar* image_pointer = img_yutian.ptr(i);
@@ -409,3 +407,5 @@ void lmk_astar::AStar::draw_baseimg() {
   }
   cv::imwrite("/home/mingkun/lmk_ws/src/a_star/assets/map_base_img.jpg", img_yutian);
 }
+// class NormalAStar
+lmk_astar::NormalAStar::NormalAStar() {}

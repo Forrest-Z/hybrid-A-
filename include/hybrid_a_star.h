@@ -73,12 +73,11 @@ class OpenList {
   static bool sort_cmp(VehiclePose pose1, VehiclePose pose2);
   std::vector<VehiclePose> openlist_data_;
 };
-class AStar {
+class HybridAStar {
  public:
-  AStar();
-  ~AStar();
+  HybridAStar();
+  ~HybridAStar();
   void hybrid_astar_search();
-  void normal_astar_search(std::vector<int> destination_grid, std::vector<int> initial_grid);
  private:
   const double pi_;
   std::vector<std::vector<double>> motion_primitive(VehiclePose root_pose);
@@ -97,7 +96,7 @@ class AStar {
   void draw_demo();
   void draw_baseimg();
   // member parameters
-  ros::NodeHandle astar_nh_;
+  ros::NodeHandle hybrid_astar_nh_;
   std::vector<VehiclePose> path_found_;
   std::vector<double> car_parameters_;
   tiguan_movebase::VehicleMoveBase tiguan_model_;
@@ -107,6 +106,19 @@ class AStar {
   VehiclePose initial_;
   ROSMapData map_data_;
   std::vector<std::vector<double>> heuristic_lookup_talbe_;
+};
+class NormalAStar {
+ public:
+  NormalAStar();
+  int normal_astar_search();
+ private:
+  const double pi_;
+  double heuristic_func(VehiclePose cal_pose);
+  void update_neighbour(VehiclePose& cur_pose);
+  bool reach_destination(VehiclePose temp_pose);
+  bool collision_detection(VehiclePose check_pose);
+  OpenList open_list_;
+  std::map<std::vector<int>, VehiclePose> closed_list_;
 };
 }
 // if X has already been defined, goto #else directly
