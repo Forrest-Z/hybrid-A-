@@ -5,6 +5,9 @@
 #include <algorithm>
 #include <vector>
 #include <iostream>
+#include <memory>
+
+#include "tiguan_movebase.h"
 
 namespace lmk_libraries {
 class NHCurve {
@@ -12,7 +15,8 @@ class NHCurve {
   void RSCurve();
   void DBCurve();
  private:
-  int k;
+  double desired_velocity_;
+  int curve_type_;
 };
 }
 #endif //CATKIN_WS_SRC_A_STAR_INCLUDE_NH_CURVE_H_

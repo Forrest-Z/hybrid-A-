@@ -1,5 +1,50 @@
 #include "hybrid_a_star.h"
-
+// construnction function of the base class AStar
+// note: all derived classes should obey the interface of the base class
+const double lmk_astar::AStar::pi_ = 3.1416;
+lmk_astar::AStar::AStar() {
+  //google::InitGoogleLogging("astar_planning");
+  //LOG(INFO) << "glog set successfully" << std::endl;
+  acquire_mapdata();
+}
+void lmk_astar::AStar::acquire_mapdata() {
+  ros::NodeHandle hybrid_astar_nh_("astar_planner");
+  int size(0);
+  while(!map_data_.metadata_flag) {
+    ros::ServiceClient map_meta_client = hybrid_astar_nh_.serviceClient<map_proc::MapMetaP>("/map_metadata_planner");
+    map_proc::MapMetaP map_meta;
+    if (map_meta_client.call(map_meta)) {
+      map_data_.map_length = map_meta.response.length;
+      map_data_.map_height = map_meta.response.height;
+      map_data_.resolution = map_meta.response.resolution;
+    } else {ROS_ERROR("error: failed to call map metadata");}
+    if (map_data_.map_height != -1 && map_data_.map_length != -1) {
+      map_data_.metadata_flag = true;
+      ROS_INFO("map data successfully received");
+    } else {map_data_.metadata_flag = false;}
+  }
+  std::vector<std::vector<int>> map_copy(map_data_.map_height, std::vector<int>(map_data_.map_length, -1));
+  ros::ServiceClient map_client = hybrid_astar_nh_.serviceClient<nav_msgs::GetMap>("/static_map");
+  nav_msgs::GetMap map_rawdata;
+  while(!map_data_.mapdata_flag) {
+    if (map_client.call(map_rawdata)) {
+      size = (map_rawdata.response.map.data).size();
+      map_data_.mapdata_flag = true;
+      for (int i = 0; i < size; ++i) {
+        int x_index = i%map_data_.map_length;
+        int y_index = i/map_data_.map_length;
+        if (map_rawdata.response.map.data[i] == -1) {
+          map_copy[y_index][x_index] = 1;
+        } else if (map_rawdata.response.map.data[i] == 0) {
+          map_copy[y_index][x_index] = 0;
+        } else if (map_rawdata.response.map.data[i] == 100) {
+          map_copy[y_index][x_index] = 1;
+        } else {}
+      }
+    } else {ROS_ERROR("error: falided to receive map data");}
+    map_data_.map_occupancy = map_copy;
+  }
+}
 // construction/deconstruction function of struct VehiclePose
 lmk_astar::VehiclePose::VehiclePose() {
   parent = nullptr;
@@ -151,28 +196,27 @@ inline lmk_astar::VehiclePose lmk_astar::OpenList::top() {
   }
   return openlist_data_[0];
 }
-// static function, in case std::sort() will be used
-bool lmk_astar::OpenList::sort_cmp(VehiclePose pose1, VehiclePose pose2) {
-  return (pose1.total_cost > pose2.total_cost);
-}
-// construction/deconstruction function of class AStar
-lmk_astar::HybridAStar::HybridAStar():astar_nh_("astar_planner"),pi_(3.14159) {
-  //google::InitGoogleLogging("astar_planning");
+// construction/deconstruction function of derived class should be via vase class
+void lmk_astar::HybridAStar::Init() {
 #ifdef _DEBUG__
   std::cout << "Debug mode" << std::endl;
+  acquire_mapdata_fromjpg();
 #endif
-  acquire_mapdata();
+  car_parameters_ = tiguan_model_.get_parameter();
   pre_compute_heuristic_cost();
   set_destination();
   get_initial();
   //draw_baseimg();
+}
+void lmk_astar::HybridAStar::Proc() {
+  Init();
   hybrid_astar_search();
-  //LOG(INFO) << "glog set successfully" << std::endl;
 }
 lmk_astar::HybridAStar::~HybridAStar() {}
 // public member function
 // main logic
 void lmk_astar::HybridAStar::hybrid_astar_search() {
+  ROS_INFO("start Hybrid A* planning");
   VehiclePose temp_pose(initial_.x_pose, initial_.y_pose, initial_.heading_angle, 0);
   temp_pose.total_cost = temp_pose.cost_g + heuristic_func(temp_pose);
   open_list_.insert(temp_pose);
@@ -182,7 +226,7 @@ void lmk_astar::HybridAStar::hybrid_astar_search() {
     // insert into closed list
     map_data_.map_occupancy[temp_pose.y_index][temp_pose.x_index] = 2;
     closed_list_.insert(std::pair<std::vector<int>, VehiclePose>({temp_pose.x_index, temp_pose.y_index}, temp_pose));
-    if (reach_destination(temp_pose)) {     
+    if (reach_destination(temp_pose)) {
       destination_.parent = &(closed_list_.find({temp_pose.x_index, temp_pose.y_index})->second);
       closed_list_.insert(std::pair<std::vector<int>, VehiclePose>({destination_.x_index, destination_.y_index}, destination_));
       path_generator();
@@ -192,50 +236,12 @@ void lmk_astar::HybridAStar::hybrid_astar_search() {
   }
   ROS_INFO("no path found");
 }
-// private member function
-std::vector<std::vector<double>> lmk_astar::HybridAStar::motion_primitive(VehiclePose root_pose) {
-  std::vector<std::vector<double>> neighbour_nodes;
-  /*neighbour_nodes = {{root_pose.y_pose-1, root_pose.x_pose, root_pose.heading_angle, 1}, {root_pose.y_pose+1, root_pose.x_pose, root_pose.heading_angle, 1},
-  {root_pose.y_pose, root_pose.x_pose-1, root_pose.heading_angle, 1}, {root_pose.y_pose, root_pose.x_pose+1, root_pose.heading_angle, 1},
-  {root_pose.y_pose-1, root_pose.x_pose-1, root_pose.heading_angle, 1.414}, {root_pose.y_pose+.414, root_pose.x_pose-.414, root_pose.heading_angle, 1.414},
-  {root_pose.y_pose-1, root_pose.x_pose+1, root_pose.heading_angle, 1.414}, {root_pose.y_pose+1, root_pose.x_pose+1, root_pose.heading_angle, 1.414}};*/
-  VehiclePose temp_pose;
-  double resolution = map_data_.resolution;
-  std::vector<double> root_pose_vector = {root_pose.y_pose*resolution, root_pose.x_pose*resolution, root_pose.heading_angle};
-  std::vector<double> temp_storage;
-  double total_angle = car_parameters_[2];
-  double temp_angle(0.0);
-  for (int i = 0; i < 3; ++i) {
-    temp_angle = -total_angle + (total_angle/2.0)*i;
-    temp_storage = tiguan_model_.tiguan_bicycle_module(8.0, temp_angle, 0.08, root_pose_vector);
-    temp_storage[0] = temp_storage[0]/resolution;
-    temp_storage[1] = temp_storage[1]/resolution;
-    temp_storage[3] = temp_storage[3]/resolution;
-    neighbour_nodes.push_back(temp_storage);
-  }
-#ifdef _DEBUG__
-  std::cout << "root node x is " << root_pose.x_pose << " y is " << root_pose.y_pose << " angle is " << root_pose.heading_angle << std::endl;
-  for (int j = 0; j < 5; ++j) {
-    temp_storage = neighbour_nodes[j];
-    std::cout << "new motion x is " << temp_storage[1] << " y is " << temp_storage[0] << " angle is " << temp_storage[2] << " path length is " << temp_storage[3] << std::endl;
-  }
-#endif
-  return neighbour_nodes;
-}
-void lmk_astar::HybridAStar::path_generator() {
-  VehiclePose* route_pointer(&closed_list_.find({destination_.x_index, destination_.y_index})->second);
-  while (route_pointer->parent != nullptr) {
-    path_found_.push_back(*route_pointer);
-    route_pointer = route_pointer->parent;
-  }
-}
 double lmk_astar::HybridAStar::heuristic_func(VehiclePose cal_pose) {
   if (destination_.y_pose == -1 || destination_.x_pose == -1) {
     ROS_ERROR("error: no destination set, could not calculate heuristic");
     return 0;
   } else {return std::sqrt(std::pow((cal_pose.x_pose - destination_.x_pose), 2)+std::pow((cal_pose.y_pose - destination_.y_pose), 2));}
 }
-// got able to run, but result not shown yet
 void lmk_astar::HybridAStar::update_neighbour(VehiclePose& cur_pose) {
   std::vector<std::vector<double>> neighbour_nodes = motion_primitive(cur_pose);
   VehiclePose temp_pose;
@@ -269,7 +275,8 @@ bool lmk_astar::HybridAStar::reach_destination(VehiclePose temp_pose) {
     return false;
   } else if (5 >= std::sqrt(std::pow((temp_pose.y_pose - destination_.y_pose), 2) + std::pow((temp_pose.x_pose - destination_.x_pose), 2))) {
     return true;
-  } else {return false;}
+  } else {
+    return false;}
 }
 bool lmk_astar::HybridAStar::collision_detection(VehiclePose check_pose) {
   if (map_data_.map_occupancy[check_pose.y_index][check_pose.x_index] == 0) {
@@ -277,6 +284,44 @@ bool lmk_astar::HybridAStar::collision_detection(VehiclePose check_pose) {
   }
   return false;
 }
+// private member function
+std::vector<std::vector<double>> lmk_astar::HybridAStar::motion_primitive(VehiclePose root_pose) {
+  std::vector<std::vector<double>> neighbour_nodes;
+  /*neighbour_nodes = {{root_pose.y_pose-1, root_pose.x_pose, root_pose.heading_angle, 1}, {root_pose.y_pose+1, root_pose.x_pose, root_pose.heading_angle, 1},
+  {root_pose.y_pose, root_pose.x_pose-1, root_pose.heading_angle, 1}, {root_pose.y_pose, root_pose.x_pose+1, root_pose.heading_angle, 1},
+  {root_pose.y_pose-1, root_pose.x_pose-1, root_pose.heading_angle, 1.414}, {root_pose.y_pose+.414, root_pose.x_pose-.414, root_pose.heading_angle, 1.414},
+  {root_pose.y_pose-1, root_pose.x_pose+1, root_pose.heading_angle, 1.414}, {root_pose.y_pose+1, root_pose.x_pose+1, root_pose.heading_angle, 1.414}};*/
+  VehiclePose temp_pose;
+  double resolution = map_data_.resolution;
+  std::vector<double> root_pose_vector = {root_pose.y_pose*resolution, root_pose.x_pose*resolution, root_pose.heading_angle};
+  std::vector<double> temp_storage;
+  double total_angle = car_parameters_[2];
+  double temp_angle(0.0);
+  for (int i = 0; i < 5; ++i) {
+    temp_angle = -total_angle + (total_angle/2.0)*i;
+    temp_storage = tiguan_model_.tiguan_bicycle_module(8.0, temp_angle, 0.08, root_pose_vector);
+    temp_storage[0] = temp_storage[0]/resolution;
+    temp_storage[1] = temp_storage[1]/resolution;
+    temp_storage[3] = temp_storage[3]/resolution;
+    neighbour_nodes.push_back(temp_storage);
+  }
+#ifdef _DEBUG__
+  std::cout << "root node x is " << root_pose.x_pose << " y is " << root_pose.y_pose << " angle is " << root_pose.heading_angle << std::endl;
+  for (int j = 0; j < 5; ++j) {
+    temp_storage = neighbour_nodes[j];
+    std::cout << "new motion x is " << temp_storage[1] << " y is " << temp_storage[0] << " angle is " << temp_storage[2] << " path length is " << temp_storage[3] << std::endl;
+  }
+#endif
+  return neighbour_nodes;
+}
+inline void lmk_astar::HybridAStar::path_generator() {
+  VehiclePose* route_pointer(&closed_list_.find({destination_.x_index, destination_.y_index})->second);
+  while (route_pointer->parent != nullptr) {
+    path_found_.push_back(*route_pointer);
+    route_pointer = route_pointer->parent;
+  }
+}
+// got able to run, but result not shown yet
 void lmk_astar:: HybridAStar::set_destination() {
   std::vector<double> temp_config(3, 0.0);
   VehiclePose temp_pose;
@@ -311,42 +356,22 @@ std::vector<double> lmk_astar::HybridAStar::random_point(int pic_height, int pic
   random_config[2] = distribution_angle(generator);
   return random_config;
 }
-void lmk_astar::HybridAStar::acquire_mapdata() {
-  int size(0);
-  while(!map_data_.metadata_flag) {
-    ros::ServiceClient map_meta_client = astar_nh_.serviceClient<map_proc::MapMetaP>("/map_metadata_planner");
-    map_proc::MapMetaP map_meta;
-    if (map_meta_client.call(map_meta)) {
-      map_data_.map_length = map_meta.response.length;
-      map_data_.map_height = map_meta.response.height;
-      map_data_.resolution = map_meta.response.resolution;
-    } else {ROS_ERROR("error: failed to call map metadata");}
-    if (map_data_.map_height != -1 && map_data_.map_length != -1) {
-      map_data_.metadata_flag = true;
-      ROS_INFO("map data successfully received");
-    } else {map_data_.metadata_flag = false;}
-  }
+void lmk_astar::HybridAStar::acquire_mapdata_fromjpg() {
+  cv::Mat img = cv::imread("/home/mingkun/lmk_ws/src/a_star/assets/output.jpg");
+  int count;
+  map_data_.resolution = 1;
+  map_data_.map_height = img.rows;
+  map_data_.map_length = img.cols;
+  std::cout << "height is " << map_data_.map_height << " length is " << map_data_.map_length << std::endl;
   std::vector<std::vector<int>> map_copy(map_data_.map_height, std::vector<int>(map_data_.map_length, -1));
-  ros::ServiceClient map_client = astar_nh_.serviceClient<nav_msgs::GetMap>("/static_map");
-  nav_msgs::GetMap map_rawdata;
-  while(!map_data_.mapdata_flag) {
-    if (map_client.call(map_rawdata)) {
-      size = (map_rawdata.response.map.data).size();
-      map_data_.mapdata_flag = true;
-      for (int i = 0; i < size; ++i) {
-        int x_index = i%map_data_.map_length;
-        int y_index = i/map_data_.map_length;
-        if (map_rawdata.response.map.data[i] == -1) {
-          map_copy[y_index][x_index] = 1;
-        } else if (map_rawdata.response.map.data[i] == 0) {
-          map_copy[y_index][x_index] = 0;
-        } else if (map_rawdata.response.map.data[i] == 100) {
-          map_copy[y_index][x_index] = 1;
-        } else {}
-      }
-    } else {ROS_ERROR("error: falided to receive map data");}
-    map_data_.map_occupancy = map_copy;
+  for (int i = 0; i < map_data_.map_height; ++i) {
+    for (int j = 0; j < map_data_.map_length; ++j) {
+      if (img.at<cv::Vec3b>(i,j)[0] == 0 || img.at<cv::Vec3b>(i,j)[1] == 0 || img.at<cv::Vec3b>(i,j)[2] == 0) {
+        map_copy[i][j] = 0;
+      } else {map_copy[i][j] = 1;}
+    }
   }
+  map_data_.map_occupancy = map_copy;
   car_parameters_ = tiguan_model_.get_parameter();
 }
 void lmk_astar::HybridAStar::pre_compute_heuristic_cost() {
@@ -405,7 +430,90 @@ void lmk_astar::HybridAStar::draw_baseimg() {
       }
     }
   }
-  cv::imwrite("/home/mingkun/lmk_ws/src/a_star/assets/map_base_img.jpg", img_yutian);
+  cv::imwrite("/home/mingkun/lmk_ws/src/a_star/assets/map_base_img_test.jpg", img_yutian);
 }
 // class NormalAStar
-lmk_astar::NormalAStar::NormalAStar() {}
+void lmk_astar::NormalAStar::Init(VehiclePose desti) {
+  std::vector<std::vector<int>> temp_cost_map(map_data_.map_height, std::vector<int>(map_data_.map_length, -1));
+  destination_grid_ = desti;
+  cost_map_ = temp_cost_map;
+}
+int lmk_astar::NormalAStar::normal_astar_search(VehiclePose initial_gird) {
+  ROS_INFO("start normal A_star planning");
+  int path_length;
+  VehiclePose temp_pose(initial_gird.x_pose, initial_gird.y_pose, initial_gird.heading_angle, 0);
+  temp_pose.total_cost = temp_pose.cost_g + heuristic_func(temp_pose);
+  open_list_.insert(temp_pose);
+  while (!open_list_.empty()) {
+    temp_pose = open_list_.top();
+    open_list_.pop();
+    // insert into closed list
+    map_data_.map_occupancy[temp_pose.y_index][temp_pose.x_index] = 2;
+    closed_list_.insert(std::pair<std::vector<int>, VehiclePose>({temp_pose.x_index, temp_pose.y_index}, temp_pose));
+    if (reach_destination(temp_pose)) {
+      destination_grid_.parent = &(closed_list_.find({temp_pose.x_index, temp_pose.y_index})->second);
+      closed_list_.insert(std::pair<std::vector<int>, VehiclePose>({destination_grid_.x_index, destination_grid_.y_index}, destination_grid_));
+      path_length = path_generator();
+      //draw_demo();
+      return path_length;
+    } else {update_neighbour(temp_pose);}
+  }
+  return 0;
+}
+double lmk_astar::NormalAStar::heuristic_func(VehiclePose start_grid) {
+  double length = std::abs(destination_grid_.x_index - start_grid.x_index) + std::abs(destination_grid_.y_index - start_grid.x_index);
+  return length;
+}
+void lmk_astar::NormalAStar::update_neighbour(VehiclePose& cur_grid) {
+  std::vector<std::vector<int>> neighbour_nodes = motion_primitive(cur_grid);
+  VehiclePose temp_pose;
+  int open_index(0);
+  for (auto i : neighbour_nodes) {
+    temp_pose = {i[1], i[0], i[2]};
+    // check if the pose is valid: valid index and collision free
+    if (i[1] >=0 && i[1] <= (map_data_.map_length-1) && i[0] >=0 && i[0] <= (map_data_.map_height-1) && collision_detection(temp_pose)) {
+      // if in closed list, do nothing
+      if (map_data_.map_occupancy[temp_pose.y_index][temp_pose.x_index] == 2) {continue;}
+      // update cost_g
+      temp_pose.cost_g = cur_grid.cost_g + i[2];
+      // calculate the heuristic distance and update the current total_cost
+      temp_pose.total_cost = heuristic_func(temp_pose) + temp_pose.cost_g;
+      temp_pose.parent = &(closed_list_.find({cur_grid.x_index, cur_grid.y_index})->second);
+      // if in openlist: check if its cost_g nearer
+      if (map_data_.map_occupancy[temp_pose.y_index][temp_pose.x_index] == 3) {
+        open_index = open_list_.find(temp_pose);
+        if (open_list_.check_nearer(open_index, temp_pose)) {
+          open_list_.decrease(open_index, temp_pose);
+        } else {}
+      } else {
+        open_list_.insert(temp_pose);
+      }
+    }
+  }
+}
+bool lmk_astar::NormalAStar::reach_destination(VehiclePose temp_grid) {
+  if (std::abs(destination_grid_.x_index - temp_grid.x_index) < 6 && std::abs(destination_grid_.y_index - temp_grid.y_index) < 6) {
+    return true;
+  } else {return false;};
+}
+bool lmk_astar::NormalAStar::collision_detection(VehiclePose check_grid) {
+  if (map_data_.map_occupancy[check_grid.y_index][check_grid.x_index] == 0) {
+    return true;
+  }
+  return false;
+}
+inline std::vector<std::vector<int>> lmk_astar::NormalAStar::motion_primitive(VehiclePose root_grid) {
+  std::vector<std::vector<int>> neighbours;
+  neighbours = {{root_grid.y_index + 10, root_grid.x_index + 10, 10}, {root_grid.y_index + 10, root_grid.x_index - 10, 10},
+                {root_grid.y_index - 10, root_grid.x_index + 10, 10}, {root_grid.y_index + 10, root_grid.x_index - 10, 10}};
+  return neighbours;
+}
+inline int lmk_astar::NormalAStar::path_generator() {
+  int count(1);
+  VehiclePose* route_pointer(&closed_list_.find({destination_grid_.x_index, destination_grid_.y_index})->second);
+  while (route_pointer->parent != nullptr) {
+    count++;
+    route_pointer = route_pointer->parent;
+  }
+  return count;
+}

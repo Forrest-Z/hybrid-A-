@@ -5,6 +5,7 @@ int main(int argc, char** argv) {
   ros::init(argc, argv, "astar_planner");
   ros::NodeHandle freespace_plan_nh;
   lmk_astar::HybridAStar hybrid_astar;
+  hybrid_astar.Proc();
   //ros::spin();
   return 0;
 }

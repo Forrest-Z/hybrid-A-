@@ -12,6 +12,7 @@
 #include <chrono>
 #include <random>
 #include <map>
+#include <memory>
 
 #include <opencv2/core.hpp>
 #include <opencv2/imgcodecs.hpp>
@@ -35,7 +36,6 @@ struct VehiclePose {
   int y_index;
   double cost_g;
   double total_cost;
-  int node_flag;
   VehiclePose* parent;
   bool operator < (const VehiclePose& temp_node) const;
   bool operator > (const VehiclePose& temp_node) const;
@@ -70,57 +70,70 @@ class OpenList {
   int heap_size_;
   const double cost_infinity_;
   void min_heapify(int index);
-  static bool sort_cmp(VehiclePose pose1, VehiclePose pose2);
   std::vector<VehiclePose> openlist_data_;
 };
-class HybridAStar {
+class AStar {
  public:
-  HybridAStar();
+  static const double pi_;
+  AStar();
+  virtual ~AStar() = default;
+ protected:
+  void acquire_mapdata();
+  virtual double heuristic_func(VehiclePose cal_pose) = 0;
+  virtual void update_neighbour(VehiclePose& cur_pose) = 0;
+  virtual bool reach_destination(VehiclePose temp_pose) = 0;
+  virtual bool collision_detection(VehiclePose check_pose) = 0;
+  OpenList open_list_;
+  ROSMapData map_data_;
+  std::map<std::vector<int>, VehiclePose> closed_list_;
+};
+class HybridAStar : virtual public AStar {
+ public:
+  void Init();
+  void Proc();
   ~HybridAStar();
   void hybrid_astar_search();
- private:
-  const double pi_;
-  std::vector<std::vector<double>> motion_primitive(VehiclePose root_pose);
-  void path_generator();
+ protected:
   double heuristic_func(VehiclePose cal_pose);
   void update_neighbour(VehiclePose& cur_pose);
   bool reach_destination(VehiclePose temp_pose);
   bool collision_detection(VehiclePose check_pose);
+ private:
+  std::vector<std::vector<double>> motion_primitive(VehiclePose root_pose);
+  void path_generator();
   void set_destination();
   void get_initial();
   std::vector<double> random_point(int pic_height, int pic_lenght);
   // funcitons that need to be precomputed, before the start of the on time planner
-  void acquire_mapdata();
+  void acquire_mapdata_fromjpg();
   void pre_compute_heuristic_cost();
   // functions that are used to draw demos
   void draw_demo();
   void draw_baseimg();
   // member parameters
-  ros::NodeHandle hybrid_astar_nh_;
   std::vector<VehiclePose> path_found_;
   std::vector<double> car_parameters_;
   tiguan_movebase::VehicleMoveBase tiguan_model_;
-  OpenList open_list_;
-  std::map<std::vector<int>, VehiclePose> closed_list_;
-  VehiclePose destination_;
   VehiclePose initial_;
-  ROSMapData map_data_;
+  VehiclePose destination_;
   std::vector<std::vector<double>> heuristic_lookup_talbe_;
 };
-class NormalAStar {
+class NormalAStar : virtual public AStar{
  public:
-  NormalAStar();
-  int normal_astar_search();
+  void Init(VehiclePose desti);
+  int normal_astar_search(VehiclePose initial_gird);
+  std::vector<std::vector<int>> cost_map_;
+ protected:
+  double heuristic_func(VehiclePose start_gird);
+  void update_neighbour(VehiclePose& cur_grid);
+  bool reach_destination(VehiclePose temp_grid);
+  bool collision_detection(VehiclePose check_grid);
  private:
-  const double pi_;
-  double heuristic_func(VehiclePose cal_pose);
-  void update_neighbour(VehiclePose& cur_pose);
-  bool reach_destination(VehiclePose temp_pose);
-  bool collision_detection(VehiclePose check_pose);
-  OpenList open_list_;
-  std::map<std::vector<int>, VehiclePose> closed_list_;
+  std::vector<std::vector<int>> motion_primitive(VehiclePose root_grid);
+  int path_generator();
+  VehiclePose destination_grid_;
 };
-}
+} // namespace lmk_astar
 // if X has already been defined, goto #else directly
 #else
 // however, nothing should be stated here
