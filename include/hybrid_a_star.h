@@ -72,33 +72,48 @@ class OpenList {
   void min_heapify(int index);
   std::vector<VehiclePose> openlist_data_;
 };
-class AStar {
+class AStarInterface {
  public:
   static const double pi_;
-  AStar();
-  virtual ~AStar() = default;
  protected:
-  void acquire_mapdata();
   virtual double heuristic_func(VehiclePose cal_pose) = 0;
   virtual void update_neighbour(VehiclePose& cur_pose) = 0;
   virtual bool reach_destination(VehiclePose temp_pose) = 0;
   virtual bool collision_detection(VehiclePose check_pose) = 0;
-  OpenList open_list_;
+};
+class NormalAStar : virtual public AStarInterface{
+ public:
+  void Init(VehiclePose desti);
+  std::vector<std::vector<int>> cost_map_;
+ protected:
+  double heuristic_func(VehiclePose start_gird);
+  void update_neighbour(VehiclePose& cur_grid);
+  bool reach_destination(VehiclePose temp_grid);
+  bool collision_detection(VehiclePose check_grid);
   ROSMapData map_data_;
+ private:
+  int normal_astar_search(VehiclePose initial_gird);
+  std::vector<std::vector<int>> motion_primitive(VehiclePose root_grid);
+  int path_generator();
+  void draw_demo(VehiclePose initial);
+  VehiclePose destination_grid_;
+  OpenList open_list_;
   std::map<std::vector<int>, VehiclePose> closed_list_;
 };
-class HybridAStar : virtual public AStar {
+class HybridAStar : virtual public AStarInterface {
  public:
   void Init();
   void Proc();
   ~HybridAStar();
-  void hybrid_astar_search();
  protected:
   double heuristic_func(VehiclePose cal_pose);
   void update_neighbour(VehiclePose& cur_pose);
   bool reach_destination(VehiclePose temp_pose);
   bool collision_detection(VehiclePose check_pose);
+  ROSMapData map_data_;
  private:
+ void hybrid_astar_search();
+  void acquire_mapdata();
   std::vector<std::vector<double>> motion_primitive(VehiclePose root_pose);
   void path_generator();
   void set_destination();
@@ -111,27 +126,15 @@ class HybridAStar : virtual public AStar {
   void draw_demo();
   void draw_baseimg();
   // member parameters
+  NormalAStar DP_search_;
   std::vector<VehiclePose> path_found_;
   std::vector<double> car_parameters_;
   tiguan_movebase::VehicleMoveBase tiguan_model_;
   VehiclePose initial_;
   VehiclePose destination_;
   std::vector<std::vector<double>> heuristic_lookup_talbe_;
-};
-class NormalAStar : virtual public AStar{
- public:
-  void Init(VehiclePose desti);
-  int normal_astar_search(VehiclePose initial_gird);
-  std::vector<std::vector<int>> cost_map_;
- protected:
-  double heuristic_func(VehiclePose start_gird);
-  void update_neighbour(VehiclePose& cur_grid);
-  bool reach_destination(VehiclePose temp_grid);
-  bool collision_detection(VehiclePose check_grid);
- private:
-  std::vector<std::vector<int>> motion_primitive(VehiclePose root_grid);
-  int path_generator();
-  VehiclePose destination_grid_;
+  OpenList open_list_;
+  std::map<std::vector<int>, VehiclePose> closed_list_;
 };
 } // namespace lmk_astar
 // if X has already been defined, goto #else directly
